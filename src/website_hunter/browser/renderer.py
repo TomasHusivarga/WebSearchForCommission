@@ -30,8 +30,8 @@ class BrowserRenderer:
         }
         request_count = 0
         host_last_seen: dict[str, float] = {}
-        desktop_path = target_dir / "desktop.png"
-        mobile_path = target_dir / "mobile.png"
+        desktop_path = target_dir / "desktop.jpg"
+        mobile_path = target_dir / "mobile.jpg"
         normalized_url, pinned_address, _, _ = validate_public_url(url)
         url = normalized_url
         primary_host = urlsplit(url).hostname or ""
@@ -83,7 +83,7 @@ class BrowserRenderer:
                     failed_load = True
                 final_url = page.url
                 page.wait_for_timeout(500)
-                page.screenshot(path=str(desktop_path), full_page=True, animations="disabled", timeout=int(settings.defaults["browser_timeout_ms"]))
+                page.screenshot(path=str(desktop_path), type="jpeg", quality=88, full_page=True, animations="disabled", timeout=int(settings.defaults["browser_timeout_ms"]))
                 dimensions = page.evaluate("({width: document.documentElement.scrollWidth, viewport: window.innerWidth, broken: [...document.images].filter(image => !image.complete || image.naturalWidth === 0).length})")
                 broken_images = int(dimensions.get("broken", 0))
                 context.set_default_timeout(int(settings.defaults["browser_timeout_ms"]))
@@ -92,7 +92,7 @@ class BrowserRenderer:
                 mobile_metrics = page.evaluate("({width: document.documentElement.scrollWidth, viewport: window.innerWidth, broken: [...document.images].filter(image => !image.complete || image.naturalWidth === 0).length})")
                 mobile_overflow = int(mobile_metrics["width"]) > int(mobile_metrics["viewport"]) + 4
                 broken_images = max(broken_images, int(mobile_metrics.get("broken", 0)))
-                page.screenshot(path=str(mobile_path), full_page=True, animations="disabled", timeout=int(settings.defaults["browser_timeout_ms"]))
+                page.screenshot(path=str(mobile_path), type="jpeg", quality=88, full_page=True, animations="disabled", timeout=int(settings.defaults["browser_timeout_ms"]))
             except PlaywrightError as error:
                 failed_load = True
                 errors.append(str(error)[:220])
@@ -101,7 +101,7 @@ class BrowserRenderer:
                     for path in (desktop_path, mobile_path):
                         if not path.exists():
                             try:
-                                page.screenshot(path=str(path), full_page=True, timeout=5000)
+                                page.screenshot(path=str(path), type="jpeg", quality=88, full_page=True, timeout=5000)
                             except PlaywrightError:
                                 pass
             finally:

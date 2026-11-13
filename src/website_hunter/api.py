@@ -1,5 +1,6 @@
 import asyncio
 import json
+import mimetypes
 import os
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
@@ -410,7 +411,10 @@ def screenshot(candidate_id: int, kind: Literal["desktop", "mobile"]) -> FileRes
     root = settings.screenshot_dir.resolve()
     if root not in path.parents or not path.is_file():
         raise HTTPException(404, "Screenshot not available.")
-    return FileResponse(path, media_type="image/png")
+    media_type = mimetypes.guess_type(path.name)[0]
+    if media_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(404, "Screenshot format is not supported.")
+    return FileResponse(path, media_type=media_type)
 
 
 @app.post("/api/reviews")
