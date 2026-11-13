@@ -1,0 +1,15 @@
+{
+  "id": "https://www.example.cz/",
+  "loadingExperience": {
+    "metrics": {"LARGEST_CONTENTFUL_PAINT_MS": {"percentile": 2300, "category": "FAST"}},
+    "overall_category": "FAST"
+  },
+  "originLoadingExperience": {"metrics": {}},
+  "lighthouseResult": {
+    "categories": {"performance": {"score": 0.42}},
+    "audits": {
+      "largest-contentful-paint": {"numericValue": 5234.4},
+      "cumulative-layout-shift": {"numericValue": 0.213}
+    }
+  }
+}

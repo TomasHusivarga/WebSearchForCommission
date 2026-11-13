@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#123f35">
+    <title>Slovak Website Opportunity Finder</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/extras.css">
+    <link rel="stylesheet" href="/static/ranking.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-mark" aria-hidden="true">WH</div>
+      <div class="brand-copy"><strong>Website Opportunity Finder</strong><span>Slovak prospect discovery</span></div>
+      <div class="topbar-spacer"></div>
+      <span id="health-status" class="status-pill">Connecting…</span>
+      <button id="refresh-button" class="button button-quiet" type="button">Refresh</button>
+    </header>
+
+    <main class="page-shell">
+      <section class="intro-row">
+        <div>
+          <p class="eyebrow">LOCAL RESEARCH WORKSPACE</p>
+          <h1>Find websites worth a closer look.</h1>
+          <p class="intro-copy">Discover a small batch, inspect the evidence, then decide which businesses are worth pursuing.</p>
+        </div>
+        <div class="counts-strip" aria-label="Workspace totals">
+          <div><strong id="count-candidates">—</strong><span>candidates</span></div>
+          <div><strong id="count-reviewed">—</strong><span>reviewed</span></div>
+          <div><strong id="count-inventory">—</strong><span>.sk domains</span></div>
+        </div>
+      </section>
+
+      <section class="workspace-grid">
+        <aside class="discovery-panel panel">
+          <div class="section-heading">
+            <div><p class="eyebrow">DISCOVERY</p><h2>Start a batch</h2></div>
+            <span class="step-index">01</span>
+          </div>
+
+          <section class="source-block">
+            <div class="source-title"><span class="source-icon">.sk</span><div><h3>SK-NIC inventory</h3><p id="inventory-summary">Official daily registry list</p></div></div>
+            <button id="import-sknic" class="button button-secondary full-width" type="button">Import current domain list</button>
+            <div class="inline-fields">
+              <label>Domains<input id="sknic-limit" type="number" min="1" max="500" value="12"></label>
+              <label>Sample<select id="sknic-strategy"><option value="random">Random baseline</option><option value="prioritized">Name heuristic</option></select></label>
+            </div>
+            <button id="sample-sknic" class="button button-primary full-width" type="button">Queue sample</button>
+          </section>
+
+          <section class="source-block">
+            <div class="source-title"><span class="source-icon source-icon-map">⌖</span><div><h3>Targeted businesses</h3><p>OpenStreetMap business listings</p></div></div>
+            <div class="inline-fields">
+              <label>Town<select id="town-select"></select></label>
+              <label>Maximum<input id="osm-limit" type="number" min="1" max="250" value="12"></label>
+            </div>
+            <details class="category-picker"><summary>Business categories</summary><div id="category-options" class="category-options"></div></details>
+            <button id="targeted-discovery" class="button button-primary full-width" type="button">Find listed websites</button>
+            <p class="open-source-attribution">Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a></p>
+          </section>
+
+          <section class="source-block">
+            <div class="source-title"><span class="source-icon source-icon-signal">⌁</span><div><h3>Legacy fingerprint</h3><p>Screen untested inventory for old-web signals</p></div></div>
+            <div class="inline-fields">
+              <label>Domains<input id="legacy-limit" type="number" min="1" max="100" value="12"></label>
+              <label>Sample<select id="legacy-strategy"><option value="random">Random</option><option value="prioritized">Name heuristic</option></select></label>
+            </div>
+            <button id="legacy-discovery" class="button button-secondary full-width" type="button">Screen a small batch</button>
+          </section>
+
+          <section class="source-block">
+            <div class="source-title"><span class="source-icon source-icon-history">◷</span><div><h3>Historical source</h3><p>Sample old Common Crawl captures</p></div></div>
+            <div class="inline-fields">
+              <label>Domains<input id="history-limit" type="number" min="1" max="30" value="8"></label>
+              <label>Sample<select id="history-strategy"><option value="random">Random</option><option value="prioritized">Name heuristic</option></select></label>
+            </div>
+            <button id="historical-discovery" class="button button-secondary full-width" type="button">Find archived domains</button>
+          </section>
+
+          <section class="source-block manual-block">
+            <div class="source-title"><span class="source-icon source-icon-manual">↗</span><div><h3>Manual URL</h3><p>Run a site through the same pipeline</p></div></div>
+            <form id="manual-form" class="manual-form">
+              <label class="visually-hidden" for="manual-url">Website URL or domain</label>
+              <input id="manual-url" type="text" maxlength="2048" placeholder="example.sk" required>
+              <button class="button button-primary" type="submit">Add</button>
+            </form>
+          </section>
+
+          <div id="ai-notice" class="notice notice-muted" hidden></div>
+          <div id="action-status" class="action-status" role="status" aria-live="polite"></div>
+        </aside>
+
+        <section class="review-column">
+          <section class="panel queue-panel">
+            <div class="section-heading section-heading-compact">
+              <div><p class="eyebrow">HUMAN REVIEW</p><h2>Candidate queue</h2></div>
+              <div class="queue-controls">
+                <div class="filter-group" role="group" aria-label="Filter candidates">
+                  <button class="filter-button active" data-filter="all" type="button">All</button>
+                  <button class="filter-button" data-filter="unreviewed" type="button">Needs review</button>
+                </div>
+                <label class="sort-control">Sort by
+                  <select id="candidate-sort" aria-label="Sort candidates">
+                    <option value="prospects">Best redesign prospects</option>
+                    <option value="antiquity">Antiquity evidence</option>
+                    <option value="recent">Newest discovered</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div id="queue-state" class="queue-state" aria-live="polite">Loading candidates…</div>
+            <div id="candidate-list" class="candidate-list"></div>
+          </section>
+
+          <section class="panel metrics-panel">
+            <div class="section-heading section-heading-compact">
+              <div><p class="eyebrow">DISCOVERY EXPERIMENTS</p><h2>Source performance</h2></div>
+              <span class="step-index">02</span>
+            </div>
+            <p class="panel-subtitle">Counts are based on reviewed candidates and measured processing time. Discovery-only screens are shown separately from full inspections.</p>
+            <div class="table-scroll"><table><thead><tr><th>Source</th><th>Found</th><th>Pre-screened</th><th>Screened</th><th>Rendered</th><th>Businesses</th><th>Vintage / dated</th><th>Good</th><th>Usable email</th><th>Duplicates</th><th>Failed / unreachable</th><th>Acceptance</th><th>Good / rendered</th><th>Processing min</th><th>Good / hour</th></tr></thead><tbody id="metrics-body"><tr><td colspan="15">No source results yet.</td></tr></tbody></table></div>
+          </section>
+
+          <section class="panel runs-panel">
+            <div class="section-heading section-heading-compact">
+              <div><p class="eyebrow">PERSISTENT ACTIVITY</p><h2>Recent batches</h2></div>
+            </div>
+            <div id="runs-list" class="runs-list"><span class="muted">No batches yet.</span></div>
+          </section>
+        </section>
+      </section>
+    </main>
+    <template id="candidate-template">
+      <article class="candidate-card">
+        <div class="candidate-head">
+          <div class="candidate-primary"><div class="candidate-domain-row"><span class="classification-badge"></span><h3 class="candidate-name"></h3></div><a class="candidate-url" target="_blank" rel="noopener noreferrer"></a><div class="candidate-meta"></div></div>
+          <div class="priority-box"><span>Prospect ranking</span><strong class="antiquity-label"></strong><ul class="antiquity-reasons"></ul><span class="prospect-context-label">Prospect context</span><ul class="priority-reasons"></ul></div>
+        </div>
+        <div class="evidence-grid"><section class="evidence-box"><div class="evidence-label">DESKTOP</div><img class="screenshot desktop-shot" alt="Desktop rendering of website"></section><section class="evidence-box mobile-evidence"><div class="evidence-label">MOBILE · 390 PX</div><img class="screenshot mobile-shot" alt="Mobile rendering of website"></section></div>
+        <div class="candidate-details"><div class="detail-column"><h4>Visual evidence</h4><ul class="visual-evidence"></ul><p class="mobile-observation"></p><h4>Website signals</h4><ul class="legacy-list"></ul></div><div class="detail-column"><h4>Business</h4><div class="business-summary"></div><h4>Public contacts</h4><div class="contact-list"></div><h4>Discovery</h4><div class="source-list"></div><div class="history-row"></div></div></div>
+        <section class="opportunity-panel" aria-label="Website opportunity assessment"><div class="opportunity-top"><div><p class="eyebrow">WEBSITE OPPORTUNITY</p><div class="score-row"><div><strong class="opportunity-score"></strong><span>Opportunity fit</span></div><div><strong class="neglect-score"></strong><span>Website issues</span></div><div><strong class="activity-score"></strong><span>Activity signals</span></div></div></div><div class="page-speed-control"><span class="page-speed-status"></span><button class="button button-secondary pagespeed-button" type="button"></button></div></div><div class="opportunity-columns"><div><h4>Possible improvements</h4><ul class="opportunity-issues"></ul></div><div><h4>What is already working</h4><ul class="opportunity-strengths"></ul></div></div><p class="opportunity-method"></p></section>
+        <section class="mockup-panel" aria-label="Redesign concept"><div class="mockup-heading"><div><p class="eyebrow">DESIGN CONCEPT</p><h4>Redesigned homepage preview</h4></div><div class="mockup-actions"><span class="mockup-status" role="status" aria-live="polite"></span><button class="button button-secondary generate-mockup" type="button">Generate concept</button><a class="button button-quiet download-mockup" hidden download>Download concept</a></div></div><img class="mockup-preview" alt="AI generated redesign concept based on the current desktop screenshot" hidden></section>
+        <section class="outreach-panel" aria-label="Outreach draft"><div class="outreach-heading"><div><p class="eyebrow">OUTREACH</p><h4>Personal email draft</h4></div><span class="outreach-saved" role="status" aria-live="polite"></span></div><div class="outreach-fields"><label>Status<select class="outreach-status"><option value="new">New</option><option value="drafted">Drafted</option><option value="contacted">Contacted</option><option value="replied">Replied</option><option value="not_interested">Not interested</option><option value="skip">Skip</option></select></label><label>Subject<input class="outreach-subject" maxlength="220"></label><label class="outreach-body-label">Message<textarea class="outreach-body" maxlength="6000" rows="6"></textarea></label></div><div class="outreach-actions"><button class="button button-secondary generate-draft" type="button">Build draft from evidence</button><button class="button button-primary save-draft" type="button">Save draft</button><button class="button button-quiet open-email" type="button">Open in email app</button></div></section>
+        <form class="review-form"><label>Human verdict<select class="verdict-select"><option value="">Choose a verdict</option><option>GOOD PROSPECT</option><option>OUTDATED BUT NOT USEFUL</option><option>NOT OUTDATED</option><option>NOT A BUSINESS / IRRELEVANT</option><option>UNCERTAIN</option><option>DEAD / UNREACHABLE</option></select></label><label class="note-label">Note<textarea class="review-note" maxlength="500" rows="2" placeholder="Optional note"></textarea></label><button class="button button-primary save-review" type="submit">Save review</button><button class="button button-quiet history-button" type="button">Check archive history</button><span class="review-saved"></span></form>
+      </article>
+    </template>
+  </body>
+</html>
