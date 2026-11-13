@@ -1,6 +1,7 @@
 from website_hunter.screening.business import extract_business
 from website_hunter.screening.contacts import extract_contacts
 from website_hunter.screening.html_signals import (
+    detect_bot_challenge,
     detect_forum_site,
     detect_legacy_signals,
     detect_parked_page,
@@ -38,6 +39,20 @@ def test_identifies_websupport_domain_placeholder():
         "Registrácia domén, hosting a servery :: Websupport.sk",
         "Na tejto doméne zatiaľ nič nie je. Nothing to see here yet.",
     )
+
+
+def test_detects_standalone_bot_challenges_without_flagging_a_normal_captcha_form():
+    challenge = """<html><head><title>Just a moment...</title></head><body>
+      <h1>Checking your browser before accessing example.sk</h1>
+      <div id='cf-challenge'>Enable JavaScript and cookies to continue.</div>
+    </body></html>"""
+    ordinary_form = """<html><head><title>Book a visit</title></head><body>
+      <h1>Book a visit with our clinic</h1><p>We use reCAPTCHA on this form.</p>
+      <form><div class='g-recaptcha'></div></form>
+    </body></html>"""
+
+    assert detect_bot_challenge("Just a moment...", "Checking your browser before accessing example.sk", challenge)
+    assert not detect_bot_challenge("Book a visit", "Book a visit with our clinic. We use reCAPTCHA on this form.", ordinary_form)
 
 
 def test_detects_replacement_website_notice_and_external_destination():

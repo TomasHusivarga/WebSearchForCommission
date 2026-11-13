@@ -18,6 +18,7 @@ RE_GTM = re.compile(r"googletagmanager\.com/gtm\.js|\bGTM-[A-Z0-9]{5,8}\b")
 RE_ADS = re.compile(r"\bAW-\d{8,12}\b|googleadservices\.com|google_conversion_id")
 RE_SKLIK = re.compile(r"c\.seznam\.cz|c\.imedia\.cz|seznam_retargeting_id|seznam_cId")
 RE_FB = re.compile(r"connect\.facebook\.net/[\w_]+/fbevents\.js|fbq\(\s*['\"]init")
+RE_FLASH = re.compile(r"\.swf\b|shockwave[- ]flash|application/x-shockwave-flash", re.I)
 CONTACT_LINK = re.compile(r"kontakt|contact", re.I)
 
 LEGACY_TAGS = ("font", "center", "marquee", "frameset", "frame")
@@ -122,7 +123,7 @@ def extract_facts(raw, header_charset, headers, lists, site_host, final_url, cur
     f["nested_tables"] = len(soup.select("table table"))
     legacy = {t: len(soup.find_all(t)) for t in LEGACY_TAGS}
     legacy["bgcolor"] = len(soup.find_all(attrs={"bgcolor": True}))
-    legacy["swf"] = low.count(".swf")
+    legacy["flash"] = len(RE_FLASH.findall(low))
     f["legacy_tags"] = {k: v for k, v in legacy.items() if v}
 
     versions = [v for v in (jquery_version(t["src"]) for t in soup.find_all("script", src=True)) if v]

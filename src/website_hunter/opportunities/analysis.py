@@ -5,6 +5,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
+from website_hunter.config import settings
 from website_hunter.opportunities.signals import extract_facts
 
 
@@ -139,8 +140,16 @@ def score_facts(facts: dict[str, Any], site: dict[str, Any], current_year: int |
     neglect_score = min(100, sum(neglect.values()))
     activity_score = min(100, sum(activity.values()))
     opportunity_score = min(100, (neglect_score * (50 + activity_score) + 50) // 100)
-    return {"issues": neglect, "activity_signals": activity, "neglect_score": neglect_score,
-            "activity_score": activity_score, "opportunity_score": opportunity_score}
+    return {
+        "issues": neglect,
+        "activity_signals": activity,
+        "money_signals": activity,
+        "neglect_score": neglect_score,
+        "activity_score": activity_score,
+        "money_score": activity_score,
+        "opportunity_score": opportunity_score,
+        "lead_score": opportunity_score,
+    }
 
 
 def build_assessment(raw_html: bytes | str, headers: dict[str, str], final_url: str, render: dict[str, Any],
@@ -158,7 +167,7 @@ def build_assessment(raw_html: bytes | str, headers: dict[str, str], final_url: 
     safe_facts = {key: value for key, value in facts.items() if key not in {"emails", "ico", "text_len"}}
     site = {
         "https_ok": parts.scheme.lower() == "https",
-        "kind": _site_kind(host),
+        "kind": _site_kind(host, settings.defaults.get("diy_site_suffixes", [])),
         "mobile_overflow": render.get("horizontal_overflow"),
         "trackers_before_consent": (render.get("trackers_before_consent") or []) if facts.get("has_consent_tool") else [],
         "psi_perf": (page_speed or {}).get("performance_score"),
@@ -167,15 +176,15 @@ def build_assessment(raw_html: bytes | str, headers: dict[str, str], final_url: 
     if not facts.get("has_consent_tool"):
         site["trackers_before_consent"] = []
     scored = score_facts(safe_facts, site)
-    issues = []
-    for key, weight in sorted(scored["issues"].items(), key=lambda item: (-item[1], item[0])):
-        label, recommendation, potential = ISSUE_DETAILS[key]
-        issues.append({"key": key, "label": label, "weight": weight, "evidence": _evidence(key, facts, site),
-                       "recommendation": recommendation, "potential_benefit": potential})
+    issues = _issue_details(scored, facts, site)
     strengths = _strengths(scored["activity_signals"], facts, business or {}, contacts or [])
     name = str((business or {}).get("name") or "").strip()
     if name:
         strengths.insert(0, {"key": "identified_business", "label": "Business identified", "evidence": name})
+    if render.get("desktop_path") or render.get("mobile_path"):
+        method = "Rule based scoring uses homepage HTML and selected desktop/mobile browser observations. PageSpeed is measured on demand. Scores prioritize review; they do not prove current ad spend or predict business results."
+    else:
+        method = "Fast scoring uses homepage HTML. Mobile overflow and tracker timing are checked only for selected websites; PageSpeed is measured on demand. Scores prioritize review and do not prove current ad spend or predict business results."
     return {
         **scored,
         "issues_detail": issues,
@@ -183,7 +192,7 @@ def build_assessment(raw_html: bytes | str, headers: dict[str, str], final_url: 
         "page_speed": page_speed or {"status": "not_measured"},
         "scoring_facts": safe_facts,
         "scoring_site": site,
-        "method": "Rule based screening of the initial page and available browser observations. Scores are prioritization hints, not quality certifications or predicted business results. Advertising tags do not confirm current ad spend.",
+        "method": method,
     }
 
 
@@ -193,11 +202,7 @@ def add_page_speed(assessment: dict[str, Any], page_speed: dict[str, Any]) -> di
     site["psi_perf"] = page_speed.get("performance_score")
     site["psi_has_field_data"] = bool(page_speed.get("field_data"))
     scored = score_facts(facts, site)
-    issues = []
-    for key, weight in sorted(scored["issues"].items(), key=lambda item: (-item[1], item[0])):
-        label, recommendation, potential = ISSUE_DETAILS[key]
-        issues.append({"key": key, "label": label, "weight": weight, "evidence": _evidence(key, facts, site),
-                       "recommendation": recommendation, "potential_benefit": potential})
+    issues = _issue_details(scored, facts, site)
     strengths = [item for item in assessment.get("strengths", []) if item.get("key") != "field_data"]
     if scored["activity_signals"].get("field_data"):
         strengths.append({"key": "field_data", "label": ACTIVITY_LABELS["field_data"],
@@ -206,14 +211,52 @@ def add_page_speed(assessment: dict[str, Any], page_speed: dict[str, Any]) -> di
             "page_speed": page_speed, "scoring_site": site}
 
 
+def add_render_evidence(assessment: dict[str, Any], render: dict[str, Any]) -> dict[str, Any]:
+    facts = assessment.get("scoring_facts") or {}
+    site = dict(assessment.get("scoring_site") or {})
+    site["mobile_overflow"] = render.get("horizontal_overflow")
+    site["trackers_before_consent"] = (
+        render.get("trackers_before_consent") or [] if facts.get("has_consent_tool") else []
+    )
+    scored = score_facts(facts, site)
+    issues = _issue_details(scored, facts, site)
+    activity_keys = set(ACTIVITY_LABELS)
+    strengths = [item for item in assessment.get("strengths", []) if item.get("key") not in activity_keys]
+    strengths.extend(
+        {"key": key, "label": ACTIVITY_LABELS[key], "evidence": _activity_evidence(key, facts)}
+        for key in scored["activity_signals"]
+    )
+    return {
+        **assessment,
+        **scored,
+        "issues_detail": issues,
+        "strengths": strengths,
+        "scoring_site": site,
+    }
+
+
 def _major_version(value: Any) -> int | None:
     match = re.search(r"(?:wordpress|drupal|joomla!?)[\s/]+(\d+)", str(value), re.I)
     return int(match.group(1)) if match else None
 
 
-def _site_kind(host: str) -> str:
-    known_suffixes = (".webnode.sk", ".webnode.page", ".webnode.com", ".wixsite.com", ".wordpress.com", ".weebly.com", ".wix.com")
-    return "diy_subdomain" if host.lower().endswith(known_suffixes) else "own"
+def _site_kind(host: str, diy_suffixes: list[str] | tuple[str, ...] = ()) -> str:
+    normalized = host.lower().rstrip(".")
+    return "diy_subdomain" if any(normalized.endswith(suffix.lower()) for suffix in diy_suffixes) else "own"
+
+
+def _issue_details(scored: dict[str, Any], facts: dict[str, Any], site: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "key": key,
+            "label": ISSUE_DETAILS[key][0],
+            "weight": weight,
+            "evidence": _evidence(key, facts, site),
+            "recommendation": ISSUE_DETAILS[key][1],
+            "potential_benefit": ISSUE_DETAILS[key][2],
+        }
+        for key, weight in sorted(scored["issues"].items(), key=lambda item: (-item[1], item[0]))
+    ]
 
 
 def _evidence(key: str, facts: dict[str, Any], site: dict[str, Any]) -> str:

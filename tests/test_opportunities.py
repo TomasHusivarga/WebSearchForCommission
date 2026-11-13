@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from website_hunter.opportunities.analysis import add_page_speed, build_assessment, score_facts
+from website_hunter.opportunities.analysis import ACTIVITY_WEIGHTS, NEGLECT_WEIGHTS, add_page_speed, build_assessment, score_facts
 from website_hunter.opportunities.pagespeed import parse_pagespeed
 from website_hunter.opportunities.mockup import build_redesign_prompt
 from website_hunter.opportunities.signals import copyright_year, decode_cfemail, extract_facts, jquery_version
@@ -40,6 +40,74 @@ def test_modern_page_produces_positive_activity_signals():
     assert scores["activity_score"] == 85
     assert scores["opportunity_score"] == 0
     assert {"google_ads", "sklik", "analytics", "booking", "social_links"} == set(scores["activity_signals"])
+
+
+def test_viktor_rubric_weights_and_lead_formula():
+    assert NEGLECT_WEIGHTS == {
+        "no_viewport": 30, "mobile_overflow": 20, "no_https": 15, "diy_subdomain": 15,
+        "old_doctype": 10, "nested_tables": 10, "legacy_tags": 10, "old_cms": 10,
+        "old_copyright": 8, "ua_only": 8, "psi_poor": 8, "psi_very_poor": 12,
+        "legacy_charset": 6, "old_jquery": 6, "old_php": 6, "no_consent_tool": 6,
+        "trackers_before_consent": 6, "no_html5_sections": 5, "no_meta_description": 4,
+        "no_title": 3, "no_og": 2, "no_structured_data": 2,
+    }
+    assert ACTIVITY_WEIGHTS == {
+        "google_ads": 30, "sklik": 30, "field_data": 25, "fb_pixel": 15,
+        "analytics": 10, "booking": 10, "social_links": 5,
+    }
+
+    facts = {
+        "has_viewport": True,
+        "doctype": "html5",
+        "nested_tables": 0,
+        "legacy_tags": {},
+        "generators": [],
+        "copyright_year": 2026,
+        "ua": False,
+        "ga4": False,
+        "gtm": False,
+        "has_consent_tool": True,
+        "html5_sections": 1,
+        "has_meta_description": True,
+        "title": "Auto servis",
+        "has_og": True,
+        "has_structured_data": True,
+        "google_ads": True,
+    }
+    facts["has_viewport"] = False
+    scores = score_facts(facts, {"https_ok": True, "kind": "own"}, current_year=2026)
+
+    assert scores["neglect_score"] == 30
+    assert scores["activity_score"] == 30
+    assert scores["opportunity_score"] == 24
+
+
+def test_estranky_host_counts_as_a_hosted_builder_subdomain():
+    assessment = build_assessment(
+        b"<html><head><title>Remeselnik</title><meta name='viewport' content='width=device-width'></head></html>",
+        {},
+        "https://remeselnik.estranky.sk/",
+        {},
+    )
+
+    assert assessment["scoring_site"]["kind"] == "diy_subdomain"
+    assert assessment["issues"]["diy_subdomain"] == 15
+
+
+def test_detects_flash_embeds_by_mime_type_as_legacy_markup():
+    facts = extract_facts(
+        b"<html><head><title>Old page</title></head><body><object type='application/x-shockwave-flash'></object></body></html>",
+        None,
+        {},
+        LISTS,
+        "example.sk",
+        "https://example.sk/",
+        2026,
+    )
+    scores = score_facts(facts, {"https_ok": True, "kind": "own"}, current_year=2026)
+
+    assert facts["legacy_tags"]["flash"] == 1
+    assert scores["issues"]["legacy_tags"] == 10
 
 
 def test_tracker_requests_are_only_a_preconsent_issue_when_a_consent_tool_is_detected():

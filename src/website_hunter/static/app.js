@@ -4,6 +4,8 @@ let candidateSort = "prospects";
 let isBusy = false;
 let pageSpeedConfigured = false;
 let mockupConfigured = false;
+let aiAnalysisConfigured = false;
+const selectedCandidateIds = new Set();
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
@@ -86,6 +88,9 @@ async function refreshStatus() {
   const status = await request("/api/status");
   pageSpeedConfigured = status.pagespeed_configured;
   mockupConfigured = status.mockup_configured;
+  aiAnalysisConfigured = status.ai_configured;
+  document.querySelector("#html-report-link").hidden = !status.reports_available;
+  document.querySelector("#csv-report-link").hidden = !status.reports_available;
   document.querySelector("#health-status").textContent = "Local workspace ready";
   document.querySelector("#health-status").classList.add("ready");
   document.querySelector("#count-candidates").textContent = number(status.counts.candidates);
@@ -102,7 +107,8 @@ async function refreshStatus() {
   }
   const aiNotice = document.querySelector("#ai-notice");
   aiNotice.hidden = status.ai_configured;
-  aiNotice.textContent = `Visual AI is not configured. Screened websites will be marked UNCERTAIN for your review. Set OPENAI_API_KEY to enable image classification${status.model ? ` (${escapeHtml(status.model)})` : ""}.`;
+  aiNotice.textContent = `Fast scoring works without AI. Set OPENAI_API_KEY to analyze selected websites with their desktop and mobile screenshots${status.model ? ` (${escapeHtml(status.model)})` : ""}.`;
+  updateAnalysisControls();
 }
 
 async function refreshCandidates() {
@@ -115,9 +121,11 @@ async function refreshCandidates() {
   state.textContent = `${number(candidates.length)} shown${pending ? ` · ${number(pending)} processing or queued` : ""}`;
   if (!candidates.length) {
     list.innerHTML = `<div class="queue-empty">No candidates yet. Start with a small discovery batch or add a website URL above.</div>`;
+    updateAnalysisControls();
     return;
   }
   for (const candidate of candidates) list.append(buildCandidate(candidate));
+  updateAnalysisControls();
 }
 
 function buildCandidate(candidate) {
@@ -137,6 +145,16 @@ function buildCandidate(candidate) {
   const business = candidate.business || {};
   const meta = [business.industry, business.location, candidate.status, candidate.review?.verdict].filter(Boolean);
   card.querySelector(".candidate-meta").innerHTML = meta.map(value => `<span>${escapeHtml(value)}</span>`).join("");
+  const select = card.querySelector(".analysis-select");
+  const candidateLeadScore = (candidate.opportunity || {}).lead_score ?? (candidate.opportunity || {}).opportunity_score;
+  select.checked = selectedCandidateIds.has(candidate.id);
+  select.disabled = candidate.status !== "complete" || !Number.isFinite(candidateLeadScore);
+  card.querySelector(".analysis-select-label").textContent = `Select ${candidate.canonical_domain} for AI analysis`;
+  select.addEventListener("change", () => {
+    if (select.checked) selectedCandidateIds.add(candidate.id);
+    else selectedCandidateIds.delete(candidate.id);
+    updateAnalysisControls();
+  });
   const antiquity = candidate.antiquity || {};
   card.querySelector(".antiquity-label").textContent = antiquity.label || "Not visually assessed";
   card.querySelector(".antiquity-reasons").innerHTML = (antiquity.reasons || []).length
@@ -169,9 +187,11 @@ function buildCandidate(candidate) {
     historyRow.textContent = `Common Crawl sample: ${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)} · ${history.capture_count_sampled} sampled capture(s)`;
   }
   const opportunity = candidate.opportunity || {};
-  card.querySelector(".opportunity-score").textContent = Number.isFinite(opportunity.opportunity_score) ? `${opportunity.opportunity_score}/100` : "—";
+  const leadScore = opportunity.lead_score ?? opportunity.opportunity_score;
+  card.querySelector(".opportunity-score").textContent = Number.isFinite(leadScore) ? `${leadScore}/100` : "—";
   card.querySelector(".neglect-score").textContent = Number.isFinite(opportunity.neglect_score) ? `${opportunity.neglect_score}/100` : "—";
-  card.querySelector(".activity-score").textContent = Number.isFinite(opportunity.activity_score) ? `${opportunity.activity_score}/100` : "—";
+  const moneyScore = opportunity.money_score ?? opportunity.activity_score;
+  card.querySelector(".activity-score").textContent = Number.isFinite(moneyScore) ? `${moneyScore}/100` : "—";
   card.querySelector(".opportunity-issues").innerHTML = (opportunity.issues_detail || []).length
     ? opportunity.issues_detail.map(item => `<li><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.evidence)}</span><span><b>Redesign option:</b> ${escapeHtml(item.recommendation)}</span><span><b>Possible benefit:</b> ${escapeHtml(item.potential_benefit)}</span></li>`).join("")
     : "<li>No rule-based website issues were detected in the available evidence.</li>";
@@ -179,6 +199,20 @@ function buildCandidate(candidate) {
     ? opportunity.strengths.map(item => `<li><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.evidence)}</span></li>`).join("")
     : "<li>No positive business or marketing signals were recorded yet.</li>";
   card.querySelector(".opportunity-method").textContent = opportunity.method || "This assessment appears after the website has been inspected. Findings come from observable page evidence and need human review.";
+  const aiAnalysis = opportunity.ai_analysis;
+  const aiPanel = card.querySelector(".ai-analysis-panel");
+  if (aiAnalysis) {
+    aiPanel.hidden = false;
+    card.querySelector(".ai-analysis-category").textContent = (aiAnalysis.visual_category || "UNCERTAIN").replaceAll("_", " ");
+    card.querySelector(".ai-analysis-summary").textContent = aiAnalysis.summary || "";
+    card.querySelector(".ai-analysis-positives").innerHTML = (aiAnalysis.positives || []).length
+      ? aiAnalysis.positives.map(item => `<li><strong>${escapeHtml(item.point)}</strong><span>${escapeHtml(item.evidence)}</span></li>`).join("")
+      : "<li>No positive points were recorded.</li>";
+    card.querySelector(".ai-analysis-improvements").innerHTML = (aiAnalysis.improvements || []).length
+      ? aiAnalysis.improvements.map(item => `<li><strong>${escapeHtml(item.issue)}</strong><span>${escapeHtml(item.evidence)}</span><span><b>Option:</b> ${escapeHtml(item.recommendation)}</span><span><b>Possible benefit:</b> ${escapeHtml(item.possible_benefit)}</span></li>`).join("")
+      : "<li>No additional improvement options were recorded.</li>";
+    card.querySelector(".ai-redesign-direction").textContent = aiAnalysis.redesign_direction || "";
+  }
   const pageSpeed = opportunity.page_speed || {};
   const pageSpeedStatus = card.querySelector(".page-speed-status");
   pageSpeedStatus.textContent = pageSpeed.performance_score == null
@@ -330,6 +364,19 @@ function setScreenshot(image, candidate, kind) {
   image.src = `/api/candidates/${candidate.id}/screenshots/${kind}`;
 }
 
+function updateAnalysisControls() {
+  const count = document.querySelector("#analysis-selection-count");
+  if (!count) return;
+  count.textContent = `${selectedCandidateIds.size} selected`;
+  const button = document.querySelector("#analyze-selected");
+  button.disabled = !aiAnalysisConfigured || selectedCandidateIds.size === 0 || isBusy;
+  button.title = !aiAnalysisConfigured
+    ? "Set OPENAI_API_KEY in .env to enable selected AI analysis."
+    : selectedCandidateIds.size === 0
+      ? "Select scored candidates from the queue first."
+      : "Capture screenshots and run a detailed AI review for each selected website.";
+}
+
 function safeExternalUrl(value) {
   try {
     const url = new URL(value);
@@ -411,6 +458,45 @@ document.querySelectorAll(".filter-button").forEach(button => button.addEventLis
 document.querySelector("#candidate-sort").addEventListener("change", async event => {
   candidateSort = event.currentTarget.value;
   await refreshCandidates();
+});
+document.querySelector("#analyze-selected").addEventListener("click", async event => {
+  const button = event.currentTarget;
+  const ids = [...selectedCandidateIds];
+  if (!ids.length || !aiAnalysisConfigured || isBusy) return;
+  isBusy = true;
+  button.disabled = true;
+  const failures = [];
+  let completed = 0;
+  try {
+    for (let index = 0; index < ids.length; index += 1) {
+      setAction(`Analyzing selected website ${index + 1}/${ids.length}…`);
+      try {
+        await request(`/api/candidates/${ids[index]}/analyze`, { method: "POST" });
+        completed += 1;
+      } catch (error) {
+        failures.push(error.message);
+      }
+    }
+    if (completed) {
+      const report = await request("/api/reports/generate", {
+        method: "POST",
+        body: JSON.stringify({ candidate_ids: ids }),
+      });
+      document.querySelector("#html-report-link").href = report.html_url;
+      document.querySelector("#html-report-link").hidden = false;
+      document.querySelector("#csv-report-link").href = report.csv_url;
+      document.querySelector("#csv-report-link").hidden = false;
+      setAction(`${report.count} analyzed website(s) saved in the HTML report and CSV.${failures.length ? ` ${failures.length} website(s) could not be analyzed.` : ""}`);
+    } else {
+      setAction(failures.join(" ") || "No selected website could be analyzed.", true);
+    }
+  } catch (error) {
+    setAction(error.message, true);
+  } finally {
+    isBusy = false;
+    updateAnalysisControls();
+    await refreshAll();
+  }
 });
 document.querySelector("#refresh-button").addEventListener("click", refreshAll);
 

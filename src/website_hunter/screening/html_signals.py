@@ -29,6 +29,14 @@ FORUM_ENGINE_PATTERNS = re.compile(
     re.I,
 )
 FORUM_LINK_PATTERNS = re.compile(r"forum|f[oó]ra|diskusi|community forum|komunita / f[oó]ra", re.I)
+BOT_TITLE_PATTERNS = re.compile(r"just a moment|checking your browser|attention required|security verification", re.I)
+BOT_CHALLENGE_PATTERNS = re.compile(
+    r"checking your browser before accessing|verify(?:ing)? that you are human|"
+    r"please verify you are human|enable javascript and cookies to continue|"
+    r"performing security verification|complete the security check|browser integrity check",
+    re.I,
+)
+BOT_MARKUP_PATTERNS = re.compile(r"cf-challenge|cf-browser-verification|__cf_chl|challenge-platform|captcha-container", re.I)
 FORUM_ACTIVITY_PATTERNS = (
     re.compile(r"nejnov[eě]j[sš][ií] (?:p[rř][ií]sp[eě]vk|koment[aá][rř])|latest (?:posts|replies)", re.I),
     re.compile(r"(?:p[rř][ií]hl[aá]sit|p[rř]ihl[aá][sš]en[ií]|log ?in|sign in)", re.I),
@@ -77,6 +85,14 @@ def detect_legacy_signals(html: str, soup: BeautifulSoup | None = None) -> list[
 
 def detect_parked_page(title: str, text: str) -> bool:
     return bool(PARKED_PATTERNS.search(f"{title} {text[:5000]}"))
+
+
+def detect_bot_challenge(title: str, text: str, html: str) -> bool:
+    body = text[:5000]
+    title_match = bool(BOT_TITLE_PATTERNS.search(title))
+    challenge_match = bool(BOT_CHALLENGE_PATTERNS.search(body))
+    markup_match = bool(BOT_MARKUP_PATTERNS.search(html[:12000]))
+    return (title_match and challenge_match) or (challenge_match and markup_match and len(body) < 2500)
 
 
 def has_replacement_notice(title: str, text: str) -> bool:

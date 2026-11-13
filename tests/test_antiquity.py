@@ -163,3 +163,41 @@ def test_prospect_sort_uses_human_reviews_and_pushes_uncertain_failures_down(tmp
         "irrelevant.sk",
         "dead-reviewed.sk",
     }
+
+
+def test_prospect_sort_uses_viktor_lead_score_before_visual_category(tmp_path):
+    from website_hunter.contracts import DiscoveredDomain
+    from website_hunter.storage.repository import Repository
+    from website_hunter.storage.database import initialize
+
+    path = tmp_path / "hunter.sqlite3"
+    initialize(path)
+    repository = Repository(path)
+    run_id = repository.create_run("manual", "manual_url", 2)
+    repository.enqueue_discoveries(
+        [DiscoveredDomain("https://dated.sk", "manual"), DiscoveredDomain("https://strong.sk", "manual")],
+        run_id,
+    )
+    candidates = {candidate["canonical_domain"]: candidate for candidate in repository.list_candidates(limit=2, sort="recent")}
+    repository.update_candidate(
+        candidates["dated.sk"]["id"],
+        status="complete",
+        status_code=200,
+        final_url="https://dated.sk/",
+        classification_json={"category": "DATED", "evidence": []},
+        screening_json={"reachable": True},
+        opportunity_json={"lead_score": 18},
+    )
+    repository.update_candidate(
+        candidates["strong.sk"]["id"],
+        status="complete",
+        status_code=200,
+        final_url="https://strong.sk/",
+        classification_json={"category": "UNCERTAIN", "evidence": []},
+        screening_json={"reachable": True},
+        opportunity_json={"lead_score": 72},
+    )
+
+    ordered = repository.list_candidates(limit=2, sort="prospects")
+
+    assert [candidate["canonical_domain"] for candidate in ordered] == ["strong.sk", "dated.sk"]

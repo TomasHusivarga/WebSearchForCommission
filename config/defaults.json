@@ -15,6 +15,12 @@
     "hotjar": "hotjar\\.com",
     "clarity": "clarity\\.ms"
   },
+  "diy_site_suffixes": [
+    ".webnode.sk", ".webnode.cz", ".webnode.page", ".webnode.com", ".wixsite.com", ".wix.com",
+    ".estranky.sk", ".estranky.cz", ".weebly.com", ".wordpress.com", ".webgarden.cz", ".wbs.cz",
+    ".websnadno.cz", ".websnadno.sk", ".wz.sk", ".wz.cz", ".blogspot.com", ".webflow.io",
+    ".business.site", ".unas.cz", ".euweb.cz", ".ic.cz", ".xf.cz", ".webz.cz"
+  ],
   "max_contact_pages": 4,
   "max_batch_size": 500,
   "default_batch_size": 12,

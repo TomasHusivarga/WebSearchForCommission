@@ -37,6 +37,7 @@ class ScreeningResult:
     legacy_signals: list[dict[str, str]] = field(default_factory=list)
     business_signals: list[str] = field(default_factory=list)
     parked: bool = False
+    bot_challenge: bool = False
     replacement_notice: bool = False
     replacement_url: str | None = None
     site_kind: str | None = None

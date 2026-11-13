@@ -10,6 +10,7 @@ from website_hunter.security.fetch import FetchResponse, SafeFetcher
 from website_hunter.security.urls import canonical_host
 from website_hunter.screening.html_signals import (
     detect_business_signals,
+    detect_bot_challenge,
     detect_forum_site,
     detect_legacy_signals,
     detect_parked_page,
@@ -76,6 +77,7 @@ class SiteScreener:
             legacy_signals=legacy,
             business_signals=detect_business_signals(title, text, soup),
             parked=detect_parked_page(title, text),
+            bot_challenge=detect_bot_challenge(title, text, html),
             replacement_notice=replacement_notice,
             replacement_url=replacement_url,
             site_kind="forum" if detect_forum_site(title, text, html, links) else None,

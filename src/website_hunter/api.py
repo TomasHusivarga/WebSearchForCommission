@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from website_hunter.classification.openai_responses import OpenAIResponsesClassifier
+from website_hunter.classification.openai_website_analysis import OpenAIAnalysisError, OpenAIWebsiteAnalyzer
 from website_hunter.config import settings
 from website_hunter.contracts import DiscoveredDomain
 from website_hunter.opportunities.analysis import add_page_speed
@@ -23,6 +24,8 @@ from website_hunter.discovery.legacy import LegacyFingerprintAdapter
 from website_hunter.discovery.openstreetmap import OpenStreetMapAdapter
 from website_hunter.discovery.sknic import SknicInventoryAdapter
 from website_hunter.pipeline.worker import JobWorker
+from website_hunter.pipeline.service import CandidatePipeline
+from website_hunter.reporting import write_reports
 from website_hunter.storage.database import initialize, table_counts
 from website_hunter.storage.repository import Repository
 
@@ -91,6 +94,10 @@ class OutreachRequest(BaseModel):
     body: str = Field(default="", max_length=6000)
 
 
+class ReportRequest(BaseModel):
+    candidate_ids: list[int] = Field(min_length=1, max_length=80)
+
+
 def _discover(items: list[DiscoveredDomain], source: str, category: str, requested: int, config: dict[str, object]) -> dict[str, object]:
     run_id = repository.create_run(source, category, requested, config)
     counts = repository.enqueue_discoveries(items, run_id)
@@ -112,6 +119,7 @@ def status() -> dict[str, object]:
         "ai_configured": OpenAIResponsesClassifier().available,
         "pagespeed_configured": bool(os.getenv("PSI_API_KEY")),
         "mockup_configured": designer_available(),
+        "reports_available": all((settings.data_dir / "reports" / name).is_file() for name in ("latest.html", "latest.csv")),
         "model": settings.openai_model,
         "towns": settings.defaults["benchmark_towns"],
         "business_categories": settings.defaults["business_categories"],
@@ -259,6 +267,62 @@ async def check_pagespeed(candidate_id: int) -> dict[str, object]:
     assessment = add_page_speed(candidate.get("opportunity") or {}, result)
     repository.update_candidate(candidate_id, opportunity_json=assessment)
     return {"page_speed": result, "opportunity": assessment}
+
+
+@app.post("/api/candidates/{candidate_id}/analyze")
+async def analyze_candidate(candidate_id: int) -> dict[str, object]:
+    analyzer = OpenAIWebsiteAnalyzer()
+    if not analyzer.available:
+        raise HTTPException(503, "Set OPENAI_API_KEY in .env to analyze selected websites with AI.")
+    try:
+        candidate = await asyncio.to_thread(CandidatePipeline(repository).analyze_candidate, candidate_id)
+    except KeyError as error:
+        raise HTTPException(404, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    except OpenAIAnalysisError as error:
+        raise HTTPException(502, str(error)) from error
+    return {"candidate": candidate}
+
+
+@app.post("/api/reports/generate")
+def generate_reports(request: ReportRequest) -> dict[str, object]:
+    selected = []
+    seen = set()
+    for candidate_id in request.candidate_ids:
+        if candidate_id in seen:
+            continue
+        seen.add(candidate_id)
+        candidate = repository.get_candidate(candidate_id)
+        if candidate and (candidate.get("opportunity") or {}).get("ai_analysis"):
+            selected.append(candidate)
+    if not selected:
+        raise HTTPException(409, "Analyze at least one selected website before generating reports.")
+    try:
+        _, _, count = write_reports(selected, settings.data_dir)
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    return {
+        "count": count,
+        "html_url": "/api/reports/latest.html",
+        "csv_url": "/api/reports/latest.csv",
+    }
+
+
+@app.get("/api/reports/latest.html")
+def latest_html_report() -> FileResponse:
+    path = settings.data_dir / "reports" / "latest.html"
+    if not path.is_file():
+        raise HTTPException(404, "Generate a report from analyzed selected websites first.")
+    return FileResponse(path, media_type="text/html; charset=utf-8")
+
+
+@app.get("/api/reports/latest.csv")
+def latest_csv_report() -> FileResponse:
+    path = settings.data_dir / "reports" / "latest.csv"
+    if not path.is_file():
+        raise HTTPException(404, "Generate a report from analyzed selected websites first.")
+    return FileResponse(path, media_type="text/csv; charset=utf-8", filename="website-opportunities.csv")
 
 
 @app.post("/api/candidates/{candidate_id}/mockup")

@@ -494,7 +494,8 @@ class Repository:
             row["final_url"],
         )
         assessment = cls._row_antiquity(row)
-        return (priority, int(opportunity.get("opportunity_score") or 0), assessment.sort_key, str(row["last_seen"] or ""))
+        lead_score = int(opportunity.get("lead_score", opportunity.get("opportunity_score", 0)) or 0)
+        return (lead_score, priority, assessment.sort_key, str(row["last_seen"] or ""))
 
     @staticmethod
     def _is_confirmed_nonprospect(row: sqlite3.Row) -> bool:
@@ -509,6 +510,7 @@ class Repository:
             return True
         if (
             screening.get("parked")
+            or screening.get("bot_challenge")
             or screening.get("replacement_notice")
             or screening.get("replacement_url")
             or screening.get("site_kind") == "forum"
@@ -552,5 +554,3 @@ def _priority_key(domain: str) -> int:
     if re.search(r"[bcdfghjklmnpqrstvwxz]{6}", label):
         score -= 3
     return score
-
-\n
